@@ -31,11 +31,11 @@ rootAccount() {
     while [[ "${initialRootPassword}" != "${selectionRootPassword}" ]]; do
         printf "\nEnter password for root: "
         read -r -s initialRootPassword
-        initialRootPassword="$(mkpasswd "${initialRootPassword}" -m sha-512)"
         printf "\nConfirm: "
         read -r -s selectionRootPassword
-        selectionRootPassword="$(mkpasswd "${selectionRootPassword}" -m sha-512)"
     done
+
+    selectionRootPassword="$(mkpasswd "${selectionRootPassword}" -m sha-512)"
 
     log_ok "DONE"
 }
@@ -56,11 +56,11 @@ userAccount() {
     while [[ "${initialUserPassword}" != "${selectionUserPassword}" ]]; do
         printf "\nEnter password for %s: " "${userName}"
         read -r -s initialUserPassword
-        initialUserPassword="$(mkpasswd "${initialUserPassword}" -m sha-512)"
         printf "\nConfirm: "
         read -r -s selectionUserPassword
-        selectionUserPassword="$(mkpasswd "${selectionUserPassword}" -m sha-512)"
     done
+
+    selectionUserPassword="$(mkpasswd "${selectionUserPassword}" -m sha-512)"
 
     log_ok "DONE"
 }
