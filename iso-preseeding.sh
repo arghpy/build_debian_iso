@@ -8,66 +8,141 @@ fi
 usage() {
     cat << EOF
 
-Usage: $(basename "${0}")
+Usage: ./$(basename "${0}") [OPTIONS]
 
 DESCRIPTION:
-    Include preseed files in a Debian ISO.
+    Customize Debian Iso with a preseed and grub config for automatic the installation.
 
 OPTIONS:
     -i, --iso <original_iso>
     -p, --preseed <preseed file>
+    -g, --grub-file <grub config file>
+    -t, --txt-file <txt config file>
+    -d, --disk <disk to write to>   E.g.: sda
 EOF
+}
+
+rootAccount() {
+    log_info "Setting root account"
+
+    initialRootPassword=""
+    selectionRootPassword="password"
+
+    while [[ "${initialRootPassword}" != "${selectionRootPassword}" ]]; do
+        printf "\nEnter password for root: "
+        read -r -s initialRootPassword
+        initialRootPassword="$(echo "${initialRootPassword}" | sha512sum | awk '{print $1}')"
+        printf "\nConfirm: "
+        read -r -s selectionRootPassword
+        selectionRootPassword="$(echo "${selectionRootPassword}" | sha512sum | awk '{print $1}')"
+    done
+
+    log_ok "DONE"
+}
+
+userAccount() {
+    log_info "Setting user account"
+
+    userName=""
+
+    while [ -z "${userName}" ]; do
+        printf "Enter name for the local user: "
+        read -r userName
+    done
+
+    initialUserPassword=""
+    selectionUserPassword="password"
+
+    while [[ "${initialUserPassword}" != "${selectionUserPassword}" ]]; do
+        printf "\nEnter password for %s: " "${userName}"
+        read -r -s initialUserPassword
+        initialUserPassword="$(echo "${initialUserPassword}" | sha512sum | awk '{print $1}')"
+        printf "\nConfirm: "
+        read -r -s selectionUserPassword
+        selectionUserPassword="$(echo "${selectionUserPassword}" | sha512sum | awk '{print $1}')"
+    done
+
+    log_ok "DONE"
 }
 
 decompress_image() {
     log_info "Decompress Image"
+
     if ! command -v 7z 1> /dev/null; then
         echo "7z command not found. Please install it."
         exit 2
     fi
 
-    tempISO="$(mktemp -d)"
-    7z x -o"${tempISO}" "${originalIso}" || exit 2
+    7z x -o"${tempIso}" "${originalIso}" || exit 2
+
     log_ok "DONE"
 }
 
-preseedISO() {
-    log_info "Preseeding the ISO"
-    chmod +w -R "${tempISO}/install.amd/"
-    gunzip "${tempISO}/install.amd/initrd.gz"
-    echo "${preseedFile}" | cpio -H newc -o -A -F "${tempISO}/install.amd/initrd"
-    gzip "${tempISO}/install.amd/initrd"
-    chmod -w -R "${tempISO}/install.amd/"
+preseedIso() {
+    log_info "Preseeding the Iso"
+
+    mkdir "${tempIso}/preseed"
+    cp "${preseedFile}" "${tempIso}/preseed/preseed.cfg"
+
+    sed -i "s|ROOTPASSWORD|${selectionRootPassword}|" "${tempIso}/preseed/preseed.cfg"
+
+    sed -i "s|USERNAME|${userName}|g" "${tempIso}/preseed/preseed.cfg"
+    sed -i "s|USERPASSWORD|${selectionUserPassword}|" "${tempIso}/preseed/preseed.cfg"
+
+    log_ok "DONE"
+}
+
+configureGRUB() {
+    log_info "Configuring Grub"
+    
+    cp "${grubFile}" "${tempIso}/boot/grub/grub.cfg"
+    cp "${txtFile}" "${tempIso}/isolinux/txt.cfg"
+
     log_ok "DONE"
 }
 
 regenerateMD5() {
     log_info "Regenerating MD5SUM"
-    pushd "${tempISO}" || exit 2
+
+    pushd "${tempIso}" || exit 2
     chmod +w md5sum.txt
     find . -type f ! -name "md5sum.txt" -exec md5sum {} \; > md5sum.txt
     chmod -w md5sum.txt
     popd || exit 2
+    
     log_ok "DONE"
 }
 
-createISO() {
-    log_info "Creating the ISO"
+createIso() {
+    log_info "Creating the Iso"
+
     if ! command -v xorriso 1> /dev/null; then
         echo "xorriso command not found. Please install it."
         exit 2
     fi
 
     xorrisoOptions="$(xorriso -indev "${originalIso}" -report_el_torito as_mkisofs 2> /dev/null | grep --invert-match -- "-V" | tr '\n' ' ')"
-    eval xorriso -as mkisofs "${xorrisoOptions}" -V "Debian" -o "preseed-$(basename "${originalIso}")" "${tempISO}"
+    eval xorriso -as mkisofs "${xorrisoOptions}" -V "Debian" -o "${nameIso}" "${tempIso}"
 
     log_ok "DONE"
 }
 
 cleanUp() {
     log_info "Cleaning up"
-    chmod +w -R "${tempISO}"
-    rm --recursive --force "${tempISO}"
+
+    chmod +w -R "${tempIso}"
+    rm --recursive --force "${tempIso}"
+    rm --force "${nameIso}"
+
+    log_ok "DONE"
+}
+
+writingToDisk() {
+    log_info "Writing ${nameIso} to ${writeDisk}"
+
+    sudo umount /dev/sda* 2> /dev/null
+    sudo dd if="${nameIso}" of="/dev/${writeDisk}" status=progress
+
     log_ok "DONE"
 }
 
@@ -77,6 +152,7 @@ if [[ $# -eq 0 ]]; then
     exit 1
 fi
 
+# Gather options
 while [[ ! $# -eq 0 ]]; do
     case "${1}" in
         -h | --help)
@@ -102,6 +178,34 @@ while [[ ! $# -eq 0 ]]; do
             preseedFile="${1}"
             ;;
 
+        -g | --grub-file)
+            if [[ -z "${2-}" || ! -e "${2}" ]]; then
+                usage
+                exit 1
+            fi
+            shift
+            grubFile="${1}"
+            ;;
+
+        -t | --txt-file)
+            if [[ -z "${2-}" || ! -e "${2}" ]]; then
+                usage
+                exit 1
+            fi
+            shift
+            txtFile="${1}"
+            ;;
+
+        -d | --disk)
+            if [[ -z "${2-}" ]]; then
+                usage
+                exit 1
+            fi
+            shift
+            writeDisk="${1}"
+            ;;
+
+
         *)
             echo "Invalid option: ${1}"
             usage
@@ -111,14 +215,27 @@ while [[ ! $# -eq 0 ]]; do
     shift
 done
 
-if [[ -z "${preseedFile}" ]]; then
-    log_error "Error. Preseed file not specified"
+# Check if a preseed file was mentioned
+if [[ -z "${originalIso}" ]]; then
+    log_error "ISO file not specified"
     usage
     exit 1
 fi
 
+# Variables
+nameIso="preseed-$(basename "${originalIso}")"
+tempIso="$(mktemp -d)"
+[[ -z "${preseedFile}" ]] && preseedFile="preseed.cfg"
+[[ -z "${grubFile}" ]] && grubFile="grub.cfg"
+[[ -z "${txtFile}" ]] && txtFile="txt.cfg"
+
+# Loading functions
+rootAccount
+userAccount
 decompress_image
-preseedISO
+preseedIso
+configureGRUB
 regenerateMD5
-createISO
+createIso
+[[ -n "${writeDisk}" ]] && writingToDisk
 cleanUp
