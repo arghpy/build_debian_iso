@@ -31,10 +31,10 @@ rootAccount() {
     while [[ "${initialRootPassword}" != "${selectionRootPassword}" ]]; do
         printf "\nEnter password for root: "
         read -r -s initialRootPassword
-        initialRootPassword="$(echo "${initialRootPassword}" | sha512sum | awk '{print $1}')"
+        initialRootPassword="$(mkpasswd "${initialRootPassword}" -m sha-512)"
         printf "\nConfirm: "
         read -r -s selectionRootPassword
-        selectionRootPassword="$(echo "${selectionRootPassword}" | sha512sum | awk '{print $1}')"
+        selectionRootPassword="$(mkpasswd "${selectionRootPassword}" -m sha-512)"
     done
 
     log_ok "DONE"
@@ -56,10 +56,10 @@ userAccount() {
     while [[ "${initialUserPassword}" != "${selectionUserPassword}" ]]; do
         printf "\nEnter password for %s: " "${userName}"
         read -r -s initialUserPassword
-        initialUserPassword="$(echo "${initialUserPassword}" | sha512sum | awk '{print $1}')"
+        initialUserPassword="$(mkpasswd "${initialUserPassword}" -m sha-512)"
         printf "\nConfirm: "
         read -r -s selectionUserPassword
-        selectionUserPassword="$(echo "${selectionUserPassword}" | sha512sum | awk '{print $1}')"
+        selectionUserPassword="$(mkpasswd "${selectionUserPassword}" -m sha-512)"
     done
 
     log_ok "DONE"
