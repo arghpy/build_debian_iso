@@ -2,6 +2,7 @@
 
 #test
 
+TEST=
 
 log_colors()
 {
