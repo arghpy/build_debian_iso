@@ -6,11 +6,8 @@
 # https://github.com/github/super-linter
 name: Lint Code Base
 
-on:
-  push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
+on: [push]
+
 jobs:
   Super Linter:
     runs-on: ubuntu-latest
